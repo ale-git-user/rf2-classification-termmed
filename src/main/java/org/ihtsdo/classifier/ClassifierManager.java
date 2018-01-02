@@ -19,6 +19,7 @@ package org.ihtsdo.classifier;
 import java.io.File;
 
 import org.apache.log4j.Logger;
+import org.ihtsdo.rf2.snapshot.SnapshotManager;
 
 
 /**
@@ -38,43 +39,48 @@ public class ClassifierManager {
 
 		logger = Logger.getLogger("org.ihtsdo.classifier.ClassifierManager");
 		try {
-			if (args==null || args.length>3){
+			if (args==null || args.length<1){
 				logger.info("Error happened getting params. Params file doesn't exist");
 				System.exit(0);
 			}
-			File file=null ;
-			for (String arg : args){
-				if (!arg.equals("-CC") && !arg.equals("-CR")){
-					file =new File(arg);
-					if (!file.exists()){
-						logger.info("Error happened getting params. Params file doesn't exist");
-						System.exit(0);
-					}
-				}
-			}
-			if (file==null){
+			File file =new File(args[0]);
+			if (!file.exists()){
 				logger.info("Error happened getting params. Params file doesn't exist");
 				System.exit(0);
 			}
+			String date=args[1];
+			String pathId=args[2];
+			String executionId=args[3];
+			String db=args[4];
+			String defaultSnapshotFolder=args[5];
+			String defaultLangCode=args[6];
+			String moduleId=args[7];
+			String namespace=args[8];
+			
+//			String date="20180131";
+//			String pathId="214";
+//			String executionId="1";
+//			String db="en-edition";
+//			String defaultSnapshotFolder="/Users/ar/classifier/en-edition/214/exported-snapshot";
+//			String defaultLangCode="en";
+//			String moduleId="900000000000207008";
+//			String namespace="0";
+			
+			SnapshotManager sm=new SnapshotManager(file, db,pathId, date, defaultSnapshotFolder, moduleId, namespace);
+			sm.execute();		
+			sm=null;
+			
 			boolean classified=true;
-			for (String arg : args){
-				if (arg.equals("-CC")){
-					CycleCheck cc=new CycleCheck(file);
-					if (cc.cycleDetected()){
-						classified=false;
-					}
-					cc=null;
-					
-				}
+			CycleCheck cc=new CycleCheck(file,db,pathId,executionId, defaultSnapshotFolder,defaultLangCode);
+			if (cc.cycleDetected()){
+				classified=false;
 			}
+			cc=null;
+					
 			if (classified){
-				for (String arg : args){
-					if (arg.equals("-CR")){
-						ClassificationRunner cc=new ClassificationRunner(file);
-						cc.execute();
-						cc=null;
-					}
-				}
+				ClassificationRunner cr=new ClassificationRunner(file,date,db,pathId,executionId,defaultSnapshotFolder,defaultLangCode);
+				cr.execute();
+				cr=null;
 			}
 
 		} catch (Exception e) {

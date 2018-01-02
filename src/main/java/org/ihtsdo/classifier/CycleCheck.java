@@ -33,7 +33,14 @@ import java.util.List;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.XMLConfiguration;
 import org.apache.log4j.Logger;
+import org.ihtsdo.classifier.model.Changes;
+import org.ihtsdo.classifier.model.Report;
+import org.ihtsdo.classifier.utils.FileHelper;
 import org.ihtsdo.classifier.utils.I_Constants;
+import org.ihtsdo.json.model.ConceptDescriptor;
+import org.ihtsdo.json.model.RelationshipVersion;
+
+import com.google.gson.Gson;
 
 /**
  * The Class CycleCheck.
@@ -48,16 +55,16 @@ import org.ihtsdo.classifier.utils.I_Constants;
 public class CycleCheck {
 
 	/** The concepts. */
-	private HashMap<Long,Boolean> concepts;
+	private HashMap<String, Boolean> concepts;
 
 	/** The isa relationships map. */
-	private HashMap<Long, List<Long>> isarelationships;
+	private HashMap<String, List<String>> isarelationships;
 
 	/** The concept in loop. */
-	private HashSet<Long> conceptInLoop;
+	private HashSet<String> conceptInLoop;
 
 	/** The isa relationship typeid. */
-	private long ISARELATIONSHIPTYPEID=116680003l;
+	private String ISARELATIONSHIPTYPEID="116680003";
 
 	/** The concept file. */
 	private String[] conceptFile;
@@ -78,32 +85,34 @@ public class CycleCheck {
 	/** The logger. */
 	private  Logger logger;
 
-	/**
-	 * Instantiates a new cycle check.
-	 *
-	 * @param conceptFile the concept file
-	 * @param relationshipFile the relationship file
-	 * @param outputFile the output file
-	 */
-	public CycleCheck(String[] conceptFile, String[] relationshipFile,
-			String outputFile) {
-		super();
+	private String classifierFolder;
 
-		logger = Logger.getLogger("org.ihtsdo.classifier.CycleCheck");
-		this.conceptFile = conceptFile;
-		this.relationshipFile = relationshipFile;
-		this.outputFile = outputFile;
-	}
+	private Object pathId;
 
-	public CycleCheck(File config) throws ConfigurationException {
+	private String executionId;
+
+	private String dbName;
+
+	private String defaultSnapshotFolder;
+
+	private String descriptions;
+
+	private HashMap<String, String[]> defaultTerms;
+
+	private String defaultLangCode;
+
+	public CycleCheck(File config, String dbName, String pathId, String executionId, String defaultSnapshotFolder, String defaultLangCode) throws IOException, Exception {
 		this.config=config;
-
+		this.pathId=pathId;
+		this.executionId=executionId;
+		this.dbName=dbName;
+		this.defaultSnapshotFolder=defaultSnapshotFolder;
+		this.defaultLangCode=defaultLangCode;
 		logger = Logger.getLogger("org.ihtsdo.classifier.CycleCheck");
 		getParams();
 	}
 
-	@SuppressWarnings("unchecked")
-	private void getParams() throws ConfigurationException {
+	private void getParams() throws IOException, Exception {
 
 		try {
 			xmlConfig=new XMLConfiguration(config);
@@ -111,16 +120,30 @@ public class CycleCheck {
 			logger.info("CycleCheck - Error happened getting params file." + e.getMessage());
 			throw e;
 		}
-		List<String> conceptFiles= xmlConfig
-				.getList(I_Constants.CONCEPT_SNAPSHOT_FILES);
-		conceptFile=new String[conceptFiles.size()];
-		conceptFiles.toArray(conceptFile);
+		this.classifierFolder=xmlConfig.getString(I_Constants.CLASSIFIERFOLDER);
+		File detectFolder=new File(classifierFolder + "/" + dbName + "/" + pathId.toString() + "/detectedCycles");
+		if (!detectFolder.exists()){
+			detectFolder.mkdirs();
+		}
+		outputFile=detectFolder.getAbsolutePath() + "/detectedCycles.txt";
+		
+		File tmpFile=new File(outputFile);
+		if (tmpFile.exists()){
+			tmpFile.delete();
+		}
+		File pathFolder=new File( classifierFolder + "/" + dbName + "/" + pathId.toString() + "/exported-snapshot");
+		if (!pathFolder.exists()){
+			pathFolder.mkdirs();
+		}
+		String conceptF=FileHelper.getFile( pathFolder, "rf2-concepts", classifierFolder + "/releasedFiles/" + dbName ,null,null);
+		conceptFile=new String[]{conceptF};
 
-		List<String> relFiles= xmlConfig
-				.getList(I_Constants.RELATIONSHIP_SNAPSHOT_FILES);
-		relationshipFile=new String[relFiles.size()];
-		relFiles.toArray(relationshipFile);
-		outputFile=xmlConfig.getString(I_Constants.DETECTED_CYCLE_OUTPUT_FILE);
+		String descriptionFile=FileHelper.getFile( pathFolder, "rf2-descriptions", defaultSnapshotFolder,null,null);
+		descriptions=descriptionFile;
+		
+		String staRelFile=FileHelper.getFile( pathFolder, "rf2-relationships", classifierFolder + "/releasedFiles/" + dbName ,"stated",null);
+		relationshipFile=new String[]{staRelFile};
+
 
 		logger.info("CheckCycle - Parameters:");
 		logger.info("Concept files : ");
@@ -143,12 +166,12 @@ public class CycleCheck {
 	 * @throws java.io.IOException Signals that an I/O exception has occurred.
 	 */
 	public boolean cycleDetected() throws FileNotFoundException, IOException{
-		conceptInLoop=new HashSet<Long>();
+		conceptInLoop=new HashSet<String>();
 		loadConceptsFile();
 		loadIsaRelationshipsFile();
-		for(Long con:concepts.keySet()){
+		for(String con:concepts.keySet()){
 			if (!concepts.get(con)){
-				List<Long> desc=new ArrayList<Long>();
+				List<String> desc=new ArrayList<String>();
 				findCycle(con, desc);
 				desc.remove(con);
 				reviewed++;
@@ -171,21 +194,97 @@ public class CycleCheck {
 	 * @throws java.io.IOException Signals that an I/O exception has occurred.
 	 */
 	private void saveDetectedCyclesFile() throws IOException {
+		AddDefaultTerms(conceptInLoop);
+		Gson gson=new Gson();
 		FileOutputStream fos = new FileOutputStream( outputFile);
 		OutputStreamWriter osw = new OutputStreamWriter(fos,"UTF-8");
 		BufferedWriter bw = new BufferedWriter(osw);
 
-		bw.append("conceptId");
-		bw.append("\r\n");
-
-		for (Long concept:conceptInLoop){
-			bw.append(concept.toString());
-			bw.append("\r\n");
+		Report report=new Report();
+		report.setExecutionId(executionId);
+		if (conceptInLoop.size()>0){
+			report.setCyclesDetected("Yes");
+		}else{
+			report.setCyclesDetected("No");
 		}
+		List<ConceptDescriptor> concepts=new ArrayList<ConceptDescriptor>();
+		for (String concept:conceptInLoop){
+			ConceptDescriptor conceptDescriptor = getConceptDescriptor(concept);
+			concepts.add(conceptDescriptor);
+		}
+		report.setConceptInCycles(concepts);
+		report.setEquivalentConceptGroups(new ArrayList<ArrayList<ConceptDescriptor>>());
+		report.setEquivalentsDefinitionsDetected("No");
+
+		Changes changes=new Changes();
+		changes.setNewInferredIsas(new ArrayList<RelationshipVersion>() );
+		changes.setNewAttributes(new ArrayList<RelationshipVersion>() );
+		changes.setLostInferredIsas(new ArrayList<RelationshipVersion>() );
+		changes.setLostAttributes(new ArrayList<RelationshipVersion>() );
+		
+		report.setChanges(changes);
+		
+		
+		bw.append(gson.toJson(report));
 		bw.close();
 		bw=null;
 		fos=null;
 		osw=null;
+
+	}
+
+	private ConceptDescriptor getConceptDescriptor(String conceptId){
+
+		ConceptDescriptor cd=new ConceptDescriptor();
+		cd.setConceptId(conceptId);
+		cd.setDefinitionStatus("900000000000074008");
+
+		String moduleC1=null;
+		String term=null;
+		String[] termModule=defaultTerms.get(conceptId);
+		if (termModule!=null){
+			moduleC1=termModule[1];
+			term=termModule[0];
+		}
+			
+		cd.setModule(moduleC1);
+		cd.setDefaultTerm(term);
+		return cd;
+	}
+	
+	private void AddDefaultTerms(HashSet<String> tmpConcepts) throws IOException {
+		if (defaultTerms==null){
+			defaultTerms=new HashMap<String,String[]>();
+		}
+
+		FileInputStream rfis = new FileInputStream(descriptions);
+		InputStreamReader risr = new InputStreamReader(rfis,"UTF-8");
+		BufferedReader rbr = new BufferedReader(risr);
+		rbr.readLine();
+		String line;
+		String[] spl;
+		while((line=rbr.readLine())!=null){
+			spl=line.split("\t",-1);
+			if (tmpConcepts.contains(spl[4])){
+				if (spl[2].equals("1")){
+					if (spl[6].equals("900000000000003001")){
+						if (spl[5].equals(defaultLangCode)){
+							defaultTerms.put(spl[4], new String[]{spl[7],spl[3]});
+						}else if (!defaultTerms.containsKey(spl[4])){
+							defaultTerms.put(spl[4], new String[]{spl[7],spl[3]});
+						}
+					}else if (!defaultTerms.containsKey(spl[4])){
+						if (spl[5].equals(defaultLangCode)){
+							defaultTerms.put(spl[4], new String[]{spl[7],spl[3]});
+						}
+					}
+				}
+			}
+		}
+		rbr.close();
+		rbr=null;
+		rfis=null;
+		risr=null;
 
 	}
 
@@ -195,14 +294,21 @@ public class CycleCheck {
 	 * @param con the con
 	 * @param desc the desc
 	 */
-	private void findCycle(Long con, List<Long> desc) {
-		List<Long> parents=isarelationships.get(con);
+	private void findCycle(String con, List<String> desc) {
+		List<String> parents=isarelationships.get(con);
 		if (parents!=null){
 			desc.add(con);
-			for (Long parent:parents){
+			for (String parent:parents){
 				if (desc.contains(parent)){
 					conceptInLoop.add(parent);
 				}else{
+					if (concepts==null){
+						System.out.println("concepts set is null");
+					}
+					if (concepts.get(parent)==null){
+						System.out.println("concepts.get(" + parent + ") is null");
+						
+					}
 					if (!concepts.get(parent)){
 						findCycle(parent,desc);
 						desc.remove(parent);
@@ -223,7 +329,7 @@ public class CycleCheck {
 	 */
 	public void loadConceptsFile() throws FileNotFoundException, IOException {
 
-		concepts=new HashMap<Long, Boolean>();
+		concepts=new HashMap<String, Boolean>();
 		int count = 0;
 		for (String concept:conceptFile){
 			logger.info("Starting Concepts: " + concept);
@@ -238,7 +344,7 @@ public class CycleCheck {
 					String[] columns = line.split("\t",-1);
 					if ( columns[2].equals("1") ){
 
-						concepts.put(Long.parseLong(columns[0]), false);
+						concepts.put(columns[0], false);
 						count++;
 						if (count % 100000 == 0) {
 							System.out.print(".");
@@ -267,7 +373,7 @@ public class CycleCheck {
 	 */
 	public void loadIsaRelationshipsFile() throws FileNotFoundException, IOException {
 
-		isarelationships=new HashMap<Long,List<Long>>();
+		isarelationships=new HashMap<String,List<String>>();
 		int count = 0;
 		for (String relFile:relationshipFile){
 			logger.info("Starting Isas Relationships from: " + relFile);
@@ -280,15 +386,15 @@ public class CycleCheck {
 						continue;
 					}
 					String[] columns = line.split("\t");
-					if (Long.parseLong(columns[7])==ISARELATIONSHIPTYPEID 
-							&& columns[2].equals("1")){
-						Long sourceId = Long.parseLong(columns[4]);
+					if (columns[7].equals(ISARELATIONSHIPTYPEID) 
+							&& columns[2].equals("1") && concepts.containsKey(columns[5])){
+						String sourceId = columns[4];
 
-						List<Long> relList = isarelationships.get(sourceId);
+						List<String> relList = isarelationships.get(sourceId);
 						if (relList == null) {
-							relList = new ArrayList<Long>();
+							relList = new ArrayList<String>();
 						}
-						relList.add(Long.parseLong(columns[5]));
+						relList.add(columns[5]);
 						isarelationships.put(sourceId, relList);
 
 						count++;

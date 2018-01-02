@@ -26,29 +26,40 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
+import java.util.UUID;
 
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.XMLConfiguration;
 import org.apache.log4j.Logger;
+import org.ihtsdo.classifier.model.Changes;
 import org.ihtsdo.classifier.model.Concept;
 import org.ihtsdo.classifier.model.ConceptGroup;
 import org.ihtsdo.classifier.model.EquivalentClasses;
 import org.ihtsdo.classifier.model.Relationship;
 import org.ihtsdo.classifier.model.RelationshipGroup;
 import org.ihtsdo.classifier.model.RelationshipGroupList;
+import org.ihtsdo.classifier.model.Report;
 import org.ihtsdo.classifier.model.StringIDConcept;
+import org.ihtsdo.classifier.utils.FileHelper;
 import org.ihtsdo.classifier.utils.GetDescendants;
 import org.ihtsdo.classifier.utils.I_Constants;
+import org.ihtsdo.json.model.ConceptDescriptor;
+import org.ihtsdo.json.model.LightConceptDescriptor;
+import org.ihtsdo.json.model.RelationshipVersion;
 
 import au.csiro.snorocket.core.IFactory_123;
 import au.csiro.snorocket.snapi.I_Snorocket_123.I_Callback;
 import au.csiro.snorocket.snapi.I_Snorocket_123.I_EquivalentCallback;
 import au.csiro.snorocket.snapi.Snorocket_123;
+
+import com.google.gson.Gson;
 
 /**
  * The Class ClassificationRunner.
@@ -70,43 +81,57 @@ public class ClassificationRunner {
 
 	private File config;
 
-	/**
-	 * Instantiates a new classification runner.
-	 *
-	 * @param module the module
-	 * @param releaseDate the release date
-	 * @param concepts the concepts
-	 * @param statedRelationships the stated rels
-	 * @param previousInferredRelationships the prev inferred rels
-	 * @param newInferredRelationships the output rels
-	 * @param equivalencyReport the equiv concept file
-	 */
-	public ClassificationRunner(String module, String releaseDate, String[] concepts,
-			String[] statedRelationships,String[] previousInferredRelationships, String newInferredRelationships, String equivalencyReport) {
-		super();
+	private String pathId;
 
-		logger = Logger.getLogger("org.ihtsdo.classifier.ClassificationRunner");
+	private String executionId;
 
-		this.module = module;
-		this.releaseDate = releaseDate;
-		this.concepts = concepts;
-		this.statedRelationships = statedRelationships;
-		this.newInferredRelationships = newInferredRelationships;
-		this.equivalencyReport = equivalencyReport;
-		this.previousInferredRelationships = previousInferredRelationships;
+	private Report report;
 
-		File outputFile=new File(newInferredRelationships);
-		tempRelationshipStore=new File(outputFile.getParentFile(),"Tmp_" + outputFile.getName());
-	}
+	private String dbName;
 
-	public ClassificationRunner(File config) throws ConfigurationException {
+	private String defaultSnapshotFolder;
+
+
+	public ClassificationRunner(File config, String date, String dbName, String pathId, String executionId, String defaultSnapshotFolder, String defaultLangCode) throws IOException, Exception {
 		this.config=config;
-
+		this.releaseDate=date;
+		this.pathId=pathId;
+		this.executionId=executionId;
+		this.dbName=dbName;
+		this.defaultSnapshotFolder=defaultSnapshotFolder;
+		this.defaultLangCode=defaultLangCode;
 		logger = Logger.getLogger("org.ihtsdo.classifier.ClassificationRunner");
 
 		getParams();
+		
+		File outputFile=new File(newSnapInferredRelationships);
+		tempRelationshipStore=new File(outputFile.getParentFile(),"Tmp_" + outputFile.getName());
 
-		File outputFile=new File(newInferredRelationships);
+	}
+	public ClassificationRunner( String date, 
+			String executionId, 
+			String conceptFile, 
+			String descriptionFile, 
+			String staRelFile, 
+			String previousInfRelFile,
+			String defaultLangCode, 
+			String moduleId,
+			String outputInferredRelationships) throws IOException, Exception {
+		
+		this.releaseDate=date;
+		this.executionId=executionId;
+		this.defaultLangCode=defaultLangCode;
+		concepts=new String[]{conceptFile};
+		descriptions=descriptionFile;
+		statedRelationships=new String[]{staRelFile};
+		previousInferredRelationships=new String[]{previousInfRelFile};
+		logger = Logger.getLogger("org.ihtsdo.classifier.ClassificationRunner");
+		this.classifierFolder="classifier";
+		newSnapInferredRelationships=outputInferredRelationships;
+		this.module = moduleId;
+		getSimpleParams();
+		
+		File outputFile=new File(outputInferredRelationships);
 		tempRelationshipStore=new File(outputFile.getParentFile(),"Tmp_" + outputFile.getName());
 
 	}
@@ -149,15 +174,41 @@ public class ClassificationRunner {
 	private  String[] statedRelationships;
 
 	/** The output rels. */
-	private  String newInferredRelationships;
+	private  String newSnapInferredRelationships;
 
-	/** The equiv concept file. */
-	private  String equivalencyReport;
+	//	/** The equiv concept file. */
+	//	private  String equivalencyReport;
 
 	/** The retired set. */
 	private HashSet<String> retiredSet;
 
 	private XMLConfiguration xmlConfig;
+
+	private String classifierFolder;
+
+	private HashSet<String> modifiedConcepts;
+
+	private String newDeltaInferredRelationships;
+
+	private String reportFile;
+
+	private String descriptions;
+
+	private HashMap<String, String> defaultTerms;
+
+	private String defaultLangCode;
+
+	private HashSet<String> tmpConcepts;
+
+	private HashSet<String> retiredConcept;
+
+	private File tmpFolder;
+
+	private File removedPrevInferredFile;
+
+	private int intValue;
+
+//	private int stopValue;
 
 	/**
 	 * Execute the classification.
@@ -165,7 +216,10 @@ public class ClassificationRunner {
 	public void execute(){
 
 		try {
-
+			report=new Report();
+			report.setExecutionId(executionId);
+			tmpConcepts=new HashSet<String>();
+			retiredConcept=new HashSet<String>();
 			logger.info("\r\n::: [Test Snorocket] execute() -- begin");
 			cEditSnoCons = new ArrayList<StringIDConcept>();
 			cEditRelationships = new ArrayList<Relationship>();
@@ -174,13 +228,12 @@ public class ClassificationRunner {
 
 			loadConceptFilesTomap(concepts,false);
 
-
 			HashSet<String>parentConcepts=new HashSet<String>();
 			parentConcepts.add(I_Constants.ATTRIBUTE_ROOT_CONCEPT); //concept model attribute
 
 			int[] roles =getRoles(parentConcepts); 
 			int ridx = roles.length;
-			if (roles.length > 100) {
+			if (roles.length > 150) {
 				String errStr = "Role types exceeds 100. This will cause a memory issue. "
 						+ "Please check that role root is set to 'Concept mode attribute'";
 				logger.error(errStr);
@@ -261,8 +314,10 @@ public class ClassificationRunner {
 			rocket_123.getEquivalents(pe);
 			logger.info("\r\n::: [SnorocketMojo] ProcessEquiv() count=" + pe.countConSet
 					+ " time= " + toStringLapseSec(startTime));
-			pe.getEquivalentClasses();
-			EquivalentClasses.writeEquivConcept(pe.getEquivalentClasses(), equivalencyReport);
+			if (pe.getEquivalentClasses().size()>0){
+				writeEquivConcept(pe.getEquivalentClasses());
+			}
+			//			EquivalentClasses.writeEquivConcept(pe.getEquivalentClasses(), equivalencyReport);
 
 			// GET CLASSIFER RESULTS
 			cRocketRelationships = new ArrayList<Relationship>();
@@ -286,7 +341,7 @@ public class ClassificationRunner {
 			conRefList=new HashMap<Integer,String>();
 			conStrList=new HashMap<String,Integer>();
 			loadConceptFilesTomap(concepts,true);
-			cEditSnoCons=null;
+			//			cEditSnoCons=null;
 			if (previousInferredRelationships!=null && previousInferredRelationships.length>0){
 				loadRelationshipFilesTomap(previousInferredRelationships);
 			}
@@ -303,6 +358,7 @@ public class ClassificationRunner {
 			// WRITEBACK RESULTS
 			startTime = System.currentTimeMillis();
 			if (previousInferredRelationships==null || previousInferredRelationships.length==0){
+				cEditSnoCons=null;
 				writeInferredRel(cRocketRelationships);
 			}else{
 
@@ -311,6 +367,9 @@ public class ClassificationRunner {
 				logger.info("\r\n::: *** WRITEBACK *** LAPSED TIME =\t" + toStringLapseSec(startTime) + "\t ***");
 
 				consolidateRels();
+				retiredConcept=null;
+				cEditSnoCons=null;
+				writeReport();
 
 			}
 
@@ -321,6 +380,130 @@ public class ClassificationRunner {
 		}
 	}
 
+	private void writeReport() throws IOException {
+
+		FileOutputStream fos = new FileOutputStream( reportFile);
+		OutputStreamWriter osw = new OutputStreamWriter(fos,"UTF-8");
+		BufferedWriter bwr = new BufferedWriter(osw);
+
+		Gson gson=new Gson();
+		bwr.append(gson.toJson(report));
+
+		bwr.close();
+		bwr=null;
+
+	}
+
+	private void writeEquivConcept(EquivalentClasses equivalentClasses) {
+		if (equivalentClasses.size()>0){
+			try {
+				getDefaultTerms(equivalentClasses);
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			List<ArrayList<ConceptDescriptor>> equivGroupList=new ArrayList<ArrayList<ConceptDescriptor>>();
+			ArrayList<ConceptDescriptor> group;
+			for (ConceptGroup eqc : equivalentClasses) {
+				group=new ArrayList<ConceptDescriptor>();
+				for (Concept sc : eqc) {
+					ConceptDescriptor conceptDescriptor = getConceptDescriptor(sc);
+					group.add(conceptDescriptor);
+
+				}
+				equivGroupList.add(group);
+			}
+			report.setEquivalentConceptGroups(equivGroupList);
+			report.setEquivalentsDefinitionsDetected("Yes");
+			return;
+		}
+		report.setEquivalentsDefinitionsDetected("No");
+		report.setEquivalentConceptGroups(new ArrayList<ArrayList<ConceptDescriptor>>());
+	}
+
+	private void getDefaultTerms(EquivalentClasses equivalentClasses) throws IOException {
+
+		for (ConceptGroup eqc : equivalentClasses) {
+			for (Concept sc : eqc) {
+				String conceptId=conRefList.get(sc.id);
+				tmpConcepts.add(conceptId);
+			}
+		}
+		AddDefaultTerms(tmpConcepts);
+	}
+
+	private void AddDefaultTerms(HashSet<String> tmpConcepts) throws IOException {
+		if (defaultTerms==null){
+			defaultTerms=new HashMap<String,String>();
+		}
+
+		FileInputStream rfis = new FileInputStream(descriptions);
+		InputStreamReader risr = new InputStreamReader(rfis,"UTF-8");
+		BufferedReader rbr = new BufferedReader(risr);
+		rbr.readLine();
+		String line;
+		String[] spl;
+		while((line=rbr.readLine())!=null){
+			spl=line.split("\t",-1);
+			if (tmpConcepts.contains(spl[4])){
+				if (spl[2].equals("1")){
+					if (spl[6].equals("900000000000003001")){
+						if (spl[5].equals(defaultLangCode)){
+							defaultTerms.put(spl[4], spl[7]);
+						}else if (!defaultTerms.containsKey(spl[4])){
+							defaultTerms.put(spl[4], spl[7]);
+						}
+					}else if (!defaultTerms.containsKey(spl[4])){
+						if (spl[5].equals(defaultLangCode)){
+							defaultTerms.put(spl[4], spl[7]);
+						}
+					}
+				}
+			}
+		}
+		rbr.close();
+		rbr=null;
+		rfis=null;
+		risr=null;
+
+	}
+
+	private ConceptDescriptor getConceptDescriptor(Concept concept){
+
+		ConceptDescriptor cd=new ConceptDescriptor();
+		String conceptId=conRefList.get(concept.id);
+		cd.setConceptId(conceptId);
+		cd.setDefinitionStatus(concept.isDefined==true? "900000000000073002":"900000000000074008");
+		String moduleC1=null;
+		if (conceptModule!=null){
+			moduleC1=conceptModule.get(concept.id);
+			if (moduleC1==null){
+				moduleC1=module;
+			}
+		}
+		cd.setModule(moduleC1);
+		cd.setDefaultTerm(getDefaultTerm(conceptId));
+		return cd;
+	}
+
+	private ConceptDescriptor getConceptDescriptor(String conceptId,boolean isDefined,String module){
+
+		ConceptDescriptor cd=new ConceptDescriptor();
+		cd.setConceptId(conceptId);
+		cd.setDefinitionStatus(isDefined==true? "900000000000073002":"900000000000074008");
+
+		cd.setModule(module);
+		cd.setDefaultTerm(getDefaultTerm(conceptId));
+		return cd;
+	}
+
+	private String getDefaultTerm(String conceptId) {
+		if (defaultTerms!=null){
+			return defaultTerms.get(conceptId);
+		}
+		return null;
+	}
+
 	/**
 	 * Consolidate rels.
 	 *
@@ -328,18 +511,36 @@ public class ClassificationRunner {
 	 */
 	private void consolidateRels() throws Exception {
 
-		FileOutputStream fos = new FileOutputStream( newInferredRelationships);
+		FileOutputStream fos = new FileOutputStream( newSnapInferredRelationships);
 		OutputStreamWriter osw = new OutputStreamWriter(fos,"UTF-8");
 		BufferedWriter bw = new BufferedWriter(osw);
+
+		FileOutputStream fosd = new FileOutputStream( newDeltaInferredRelationships);
+		OutputStreamWriter oswd = new OutputStreamWriter(fosd,"UTF-8");
+		BufferedWriter bwd = new BufferedWriter(oswd);
 
 		FileInputStream rfis = new FileInputStream(tempRelationshipStore);
 		InputStreamReader risr = new InputStreamReader(rfis,"UTF-8");
 		BufferedReader rbr = new BufferedReader(risr);
+		String header=rbr.readLine();
+		bw.append(header);
+		bw.append("\r\n");
+		bwd.append(header);
+		bwd.append("\r\n");
 
+		AddDefaultTerms(tmpConcepts);
+		Changes changes=new Changes();
+		changes.setNewInferredIsas(new ArrayList<RelationshipVersion>() );
+		changes.setNewAttributes(new ArrayList<RelationshipVersion>() );
+		changes.setLostInferredIsas(new ArrayList<RelationshipVersion>() );
+		changes.setLostAttributes(new ArrayList<RelationshipVersion>() );
 		String line;
 		while((line=rbr.readLine())!=null){
+			changes=addRelToReportChanges(line,changes);
 			bw.append(line);
 			bw.append("\r\n");
+			bwd.append(line);
+			bwd.append("\r\n");
 		}
 		rbr.close();
 		rbr=null;
@@ -347,6 +548,26 @@ public class ClassificationRunner {
 		risr=null;
 
 		String[] spl;
+		if (removedPrevInferredFile.exists()){
+			rfis = new FileInputStream(removedPrevInferredFile);
+			risr = new InputStreamReader(rfis,"UTF-8");
+			rbr = new BufferedReader(risr);
+			rbr.readLine();
+	
+			while((line=rbr.readLine())!=null){
+				spl=line.split("\t",-1);
+				modifiedConcepts.add(spl[4]);
+				bw.append(line);
+				bw.append("\r\n");
+				bwd.append(line);
+				bwd.append("\r\n");
+			}
+			rbr.close();
+		}
+		report.setConceptInCycles(new ArrayList<ConceptDescriptor>());
+		report.setCyclesDetected("No");
+
+		report.setChanges(changes);
 		for (String relFile:previousInferredRelationships){
 
 			rfis = new FileInputStream(relFile);
@@ -359,16 +580,94 @@ public class ClassificationRunner {
 				if (retiredSet.contains(spl[0])){
 					continue;
 				}
-				bw.append(line);
-				bw.append("\r\n");
+				if (spl[2].equals("0")){
+					continue;
+				}
+				if (retiredConcept.contains(spl[4]) || retiredConcept.contains(spl[5]) || retiredConcept.contains(spl[7])){
+					for (int i=0; i<spl.length; i++){
+						if (i==2){
+							bwd.append("0");
+							bw.append("0");
+						}else{
+							bwd.append(spl[i]);
+							bw.append(spl[i]);
+						}
+						if (i==spl.length-1){
+							bwd.append("\r\n");
+							bw.append("\r\n");
+						}else{
+							bwd.append("\t");
+							bw.append("\t");
+						}
+					}
+
+				}else {
+					if (modifiedConcepts.contains(spl[4]) ){
+						bwd.append(line);
+						bwd.append("\r\n");
+					}
+					bw.append(line);
+					bw.append("\r\n");
+				}
 			}
 			rbr.close();
 			rbr=null;
 			rfis=null;
 			risr=null;
+
 		}
+
 		bw.close();
+		bwd.close();
 		tempRelationshipStore.delete();
+	}
+
+	private Changes addRelToReportChanges(String line, Changes changes) {
+		String[] spl=line.split("\t",-1);
+
+		RelationshipVersion r = new RelationshipVersion();
+		r.setRelationshipId(spl[0]);
+		r.setEffectiveTime(spl[1]);
+		r.setActive(spl[2]);
+		r.setModule(spl[3]);
+		r.setGroupId(Integer.valueOf( spl[6]));
+		r.setModifier(spl[8]);
+		r.setSourceId(spl[4]);
+		r.setTarget(getConceptDescriptor(spl[5],false,spl[3]));
+		r.setType(newLightConceptDescriptor(spl[7]));
+		r.setCharType(newLightConceptDescriptor(spl[8]));
+		r.setP("0");
+
+		if (spl[2].equals("1")){
+			if (spl[7].equals(I_Constants.ISA)){
+				if (changes.getNewInferredIsas().size()<1000){
+					changes.getNewInferredIsas().add(r);
+				}
+			}else{
+				if (changes.getNewAttributes().size()<1000){
+					changes.getNewAttributes().add(r);
+				}
+			}
+		}else{
+			if (spl[7].equals(I_Constants.ISA)){
+				if (changes.getLostInferredIsas().size()<1000){
+					changes.getLostInferredIsas().add(r);
+				}
+			}else{
+				if (changes.getLostAttributes().size()<1000){
+					changes.getLostAttributes().add(r);
+				}
+			}
+
+		}
+		return changes;
+	}
+
+	private LightConceptDescriptor newLightConceptDescriptor(String id) {
+		LightConceptDescriptor lcd=new LightConceptDescriptor();
+		lcd.setConceptId(id);
+		lcd.setDefaultTerm(defaultTerms.get(id));
+		return lcd;
 	}
 
 	/**
@@ -421,7 +720,7 @@ public class ClassificationRunner {
 	 * @param mapToModule the map to module
 	 * @throws java.io.IOException Signals that an I/O exception has occurred.
 	 */
-	public  void loadConceptFilesTomap(String[] concepts,boolean mapToModule )throws IOException {
+	public void loadConceptFilesTomap(String[] concepts,boolean mapToModule )throws IOException {
 
 		if (mapToModule){
 			conceptModule=new HashMap<Integer,String>();
@@ -445,11 +744,17 @@ public class ClassificationRunner {
 					conRefList.put(cont,spl[0]);
 					conStrList.put(spl[0],cont);
 
+					if (spl[0].equals("112115002")){
+						intValue=cont;
+					}
 					if (mapToModule){
 						if (spl[0].equals(I_Constants.META_SCTID)){
 							conceptModule.put(cont, module);
 						}else{
 							conceptModule.put(cont, spl[3]);
+						}
+						if (spl[2].equals("0") ){
+							retiredConcept.add(spl[0]);
 						}
 					}
 					if (spl[2].equals("1") ){
@@ -470,7 +775,7 @@ public class ClassificationRunner {
 	 * @param relationshipFile the relationship file
 	 * @throws java.io.IOException Signals that an I/O exception has occurred.
 	 */
-	public  void loadRelationshipFilesTomap( String[] relationshipFiles)throws IOException {
+	public void loadRelationshipFilesTomap( String[] relationshipFiles)throws IOException {
 
 		String line;
 		String[] spl;
@@ -484,18 +789,31 @@ public class ClassificationRunner {
 
 				spl=line.split("\t",-1);
 				if (spl[2].equals("1") && (spl[8].equals(I_Constants.INFERRED)
-						|| spl[8].equals(I_Constants.STATED))){
+						|| spl[8].equals(I_Constants.STATED )
+						&& conStrList.containsKey(spl[5])
+						&& conStrList.containsKey(spl[7])
+						&& conStrList.containsKey(spl[4]))){
 					Integer c1 = conStrList.get(spl[4]);
 					Integer c2 = conStrList.get(spl[5]);
 					Integer rg = Integer.parseInt(spl[6]);
 					Integer ty = conStrList.get(spl[7]);
 
 					if (c1 == null || c2 == null || rg == null || ty == null) {
-						logger.error("Unexpected null value c1:" + c1 + ", c2:" + c2 + ", rg:" + rg + ", ty:" + ty + ", loading line:\"" + line + "\"");
-					}
+						logger.info("Unexpected null value c1:" + c1 + ", c2:" + c2 + ", rg:" + rg + ", ty:" + ty + ", loading line:\"" + line + "\"");
+						if (c1 == null){
+							retiredConcept.add(spl[4]);
+						}
+						if (c2 == null){
+							retiredConcept.add(spl[5]);
+						}
+						if (ty == null){
+							retiredConcept.add(spl[7]);
+						}
+					}else{
 
-					Relationship rel = new Relationship(c1, c2, ty, rg, spl[0]);
-					cEditRelationships.add(rel);
+						Relationship rel = new Relationship(c1, c2, ty, rg, spl[0]);
+						cEditRelationships.add(rel);
+					}
 				}
 			}
 			rbr.close();
@@ -586,7 +904,7 @@ public class ClassificationRunner {
 		// STATISTICS COUNTERS
 		int countConSeen = 0;
 
-		FileOutputStream fos = new FileOutputStream( newInferredRelationships);
+		FileOutputStream fos = new FileOutputStream( newSnapInferredRelationships);
 		OutputStreamWriter osw = new OutputStreamWriter(fos,"UTF-8");
 		BufferedWriter bw = new BufferedWriter(osw);
 
@@ -655,10 +973,16 @@ public class ClassificationRunner {
 	private  void writeRel(BufferedWriter bw,Relationship infRel)
 			throws  IOException {
 		String moduleC1=conceptModule.get(infRel.sourceId);
+
+		String conceptId=conRefList.get(infRel.sourceId);
+		modifiedConcepts.add(conceptId);
+		tmpConcepts.add(conceptId);
+		tmpConcepts.add(conRefList.get(infRel.destinationId));
+		tmpConcepts.add(conRefList.get(infRel.typeId));
 		if (moduleC1==null){
 			moduleC1=module;
 		}
-		writeRF2TypeLine(bw,"null",releaseDate,"1",moduleC1,conRefList.get(infRel.sourceId),
+		writeRF2TypeLine(bw,UUID.randomUUID().toString(),releaseDate,"1",moduleC1,conceptId,
 				conRefList.get(infRel.destinationId),infRel.group,conRefList.get(infRel.typeId),
 				I_Constants.INFERRED, I_Constants.SOMEMODIFIER);
 
@@ -698,6 +1022,7 @@ public class ClassificationRunner {
 	private  String compareAndWriteBack(List<Relationship> snorelA, List<Relationship> snorelB)
 			throws  IOException {
 
+		modifiedConcepts=new HashSet<String>();
 		retiredSet=new HashSet<String>();
 		// STATISTICS COUNTERS
 		int countConSeen = 0;
@@ -772,7 +1097,10 @@ public class ClassificationRunner {
 				// COMPLETELY PROCESS ALL C1 FOR BOTH IN & OUT
 				// PROCESS C1 WITH GROUP == 0
 				int thisC1 = rel_A.sourceId;
-
+				
+				if (thisC1==intValue){
+					boolean bstop =true;
+				}
 				// PROCESS WHILE BOTH HAVE GROUP 0
 				while (rel_A.sourceId == thisC1 && rel_B.sourceId == thisC1 && rel_A.group == 0
 						&& rel_B.group == 0 && !done_A && !done_B) {
@@ -874,6 +1202,9 @@ public class ClassificationRunner {
 				RelationshipGroup groupA = null;
 				RelationshipGroup groupB = null;
 
+//				if (thisC1==stopValue){
+//					boolean bstop=true;
+//				}
 				// SEGMENT GROUPS IN LIST_A
 				int prevGroup = Integer.MIN_VALUE;
 				while (rel_A.sourceId == thisC1 && !done_A) {
@@ -941,7 +1272,7 @@ public class ClassificationRunner {
 							}
 						}
 					}
-					countB_Total += groupList_A.countRels();
+					countB_Total += groupList_B.countRels();
 					countB_Diff += groupList_NotEqual.countRels();
 				}
 			} else if (rel_A.sourceId > rel_B.sourceId) {
@@ -1063,12 +1394,16 @@ public class ClassificationRunner {
 			throws IOException {
 
 		retiredSet.add(rel_A.getRelId());
-
+		String conceptId=conRefList.get(rel_A.sourceId);
+		modifiedConcepts.add(conceptId);
+		tmpConcepts.add(conceptId);
+		tmpConcepts.add(conRefList.get(rel_A.destinationId));
+		tmpConcepts.add(conRefList.get(rel_A.typeId));
 		String moduleC1=conceptModule.get(rel_A.sourceId);
 		if (moduleC1==null){
 			moduleC1=module;
 		}
-		writeRF2TypeLine(bw,rel_A.getRelId(),releaseDate,"0",moduleC1,conRefList.get(rel_A.sourceId),
+		writeRF2TypeLine(bw,rel_A.getRelId(),releaseDate,"0",moduleC1,conceptId,
 				conRefList.get(rel_A.destinationId),rel_A.group,conRefList.get(rel_A.typeId),
 				I_Constants.INFERRED, I_Constants.SOMEMODIFIER);
 
@@ -1134,7 +1469,7 @@ public class ClassificationRunner {
 	}
 
 	@SuppressWarnings("unchecked")
-	private void getParams() throws ConfigurationException  {
+	private void getParams() throws IOException, Exception  {
 
 		try {
 			xmlConfig=new XMLConfiguration(config);
@@ -1144,31 +1479,114 @@ public class ClassificationRunner {
 		}
 
 		this.module = xmlConfig.getString(I_Constants.MODULEID);
-		this.releaseDate=xmlConfig.getString(I_Constants.RELEASEDATE);
-		this.equivalencyReport=xmlConfig.getString(I_Constants.EQUIVALENT_CONCEPTS_OUTPUT_FILE);
-		this.newInferredRelationships=xmlConfig.getString(I_Constants.INFERRED_RELATIONSHIPS_OUTPUT_FILE);
-		List<String> conceptFiles= xmlConfig
-				.getList(I_Constants.CONCEPT_SNAPSHOT_FILES);
-		concepts=new String[conceptFiles.size()];
-		conceptFiles.toArray(concepts);
-
-		List<String> relFiles= xmlConfig
-				.getList(I_Constants.RELATIONSHIP_SNAPSHOT_FILES);
-		statedRelationships=new String[relFiles.size()];
-		relFiles.toArray(statedRelationships);
-
-		List<String> prevRelFiles= xmlConfig
-				.getList(I_Constants.PREVIOUS_INFERRED_RELATIONSHIP_FILES);
-		if (prevRelFiles!=null && prevRelFiles.size()>0){
-			previousInferredRelationships=new String[prevRelFiles.size()];
-			prevRelFiles.toArray(previousInferredRelationships);
+		this.classifierFolder=xmlConfig.getString(I_Constants.CLASSIFIERFOLDER);
+		File equivFolder=new File(classifierFolder + "/" + dbName + "/" + pathId.toString() + "/equivalences");
+		if (!equivFolder.exists()){
+			equivFolder.mkdirs();
 		}
+		//		this.equivalencyReport=equivFolder.getAbsolutePath() + "/EquivConcepts.txt";
+		//
+		//		File tmpFile=new File(equivalencyReport);
+		//		if (tmpFile.exists()){
+		//			tmpFile.delete();
+		//		}
+		File outFolder=new File(classifierFolder + "/" + dbName + "/" + pathId.toString() + "/output");
+		if (!outFolder.exists()){
+			outFolder.mkdirs();
+		}
+		this.newSnapInferredRelationships=outFolder.getAbsolutePath() + "/sct2_Relationship_Snapshot.txt";
+		this.newDeltaInferredRelationships=outFolder.getAbsolutePath() + "/sct2_Relationship_Delta.txt";
+		this.reportFile=outFolder.getAbsolutePath() + "/classificationReport.txt";
+
+		File tmpFile =new File(reportFile);
+
+		if (tmpFile.exists()){
+			tmpFile.delete();
+		}
+		File pathFolder=new File( classifierFolder + "/" + dbName + "/" + pathId.toString() + "/exported-snapshot");
+		if (!pathFolder.exists()){
+			pathFolder.mkdirs();
+		}
+		String conceptFile=FileHelper.getFile( pathFolder, "rf2-concepts", defaultSnapshotFolder,null,null);
+		concepts=new String[]{conceptFile};
+
+		String descriptionFile=FileHelper.getFile( pathFolder, "rf2-descriptions", defaultSnapshotFolder,null,null);
+		descriptions=descriptionFile;
+
+		String staRelFile=FileHelper.getFile( pathFolder, "rf2-relationships", defaultSnapshotFolder,"stated",null);
+		statedRelationships=new String[]{staRelFile};
+
+		File previousFolder=new File( classifierFolder + "/" + dbName + "/" + pathId.toString() + "/previousFiles");
+		if (!previousFolder.exists()){
+			previousFolder.mkdirs();
+		}
+		String infRelFile=FileHelper.getFile( pathFolder, "rf2-relationships", defaultSnapshotFolder,null,"stated");
+		previousInferredRelationships=new String[]{infRelFile};
+		
+		tmpFolder=new File( classifierFolder + "/" + dbName + "/" + pathId.toString() + "/temp");
+		if (!tmpFolder.exists()){
+			tmpFolder.mkdirs();
+		}
+		removedPrevInferredFile=new File(tmpFolder,I_Constants.REMOVED_INFERRED_FILE);
+		
 		logger.info("Classification - Parameters:");
 		logger.info("Module = " + module);
 		logger.info("Release date = " + releaseDate);
-		logger.info("Equivalent Concept Output file = " + equivalencyReport);
-		logger.info("Previous Inferred Relationship file = " + previousInferredRelationships);
-		logger.info("Inferred Relationship Output file = " + newInferredRelationships);
+		//		logger.info("Equivalent Concept Output file = " + equivalencyReport);
+		logger.info("Previous Inferred Relationship file = " + previousInferredRelationships[0]);
+		logger.info("Inferred Relationship Output file = " + newSnapInferredRelationships);
+		if (removedPrevInferredFile.exists()){
+			logger.info("Removed Previous Inferred Relationship file = " + removedPrevInferredFile.getAbsolutePath());
+		}
+		logger.info("Concept files : ");
+		for (String concept:concepts){
+			logger.info( concept);
+		}
+		logger.info("Stated Relationship files : " );
+		for (String relFile:statedRelationships){
+			logger.info(relFile);
+		}
+		logger.info("Previous Relationship files : " );
+		if (previousInferredRelationships!=null){
+			for (String relFile:previousInferredRelationships){
+				logger.info(relFile);
+			}
+		}
+	}
+	private void getSimpleParams() throws IOException, Exception  {
+
+		File equivFolder=new File(classifierFolder + "/equivalences");
+		if (!equivFolder.exists()){
+			equivFolder.mkdirs();
+		}
+		File outFolder=new File(classifierFolder + "/output");
+		if (!outFolder.exists()){
+			outFolder.mkdirs();
+		}
+		this.newDeltaInferredRelationships=outFolder.getAbsolutePath() + "/sct2_Relationship_Delta.txt";
+		this.reportFile=outFolder.getAbsolutePath() + "/classificationReport.txt";
+
+		File tmpFile =new File(reportFile);
+
+		if (tmpFile.exists()){
+			tmpFile.delete();
+		}
+		
+		tmpFolder=new File( classifierFolder + "/temp");
+		if (!tmpFolder.exists()){
+			tmpFolder.mkdirs();
+		}
+		removedPrevInferredFile=new File(tmpFolder,I_Constants.REMOVED_INFERRED_FILE);
+		
+		logger.info("Classification - Parameters:");
+		logger.info("Module = " + module);
+		logger.info("Release date = " + releaseDate);
+		//		logger.info("Equivalent Concept Output file = " + equivalencyReport);
+		logger.info("Previous Inferred Relationship file = " + previousInferredRelationships[0]);
+		logger.info("Inferred Relationship Output file = " + newSnapInferredRelationships);
+		if (removedPrevInferredFile.exists()){
+			logger.info("Removed Previous Inferred Relationship file = " + removedPrevInferredFile.getAbsolutePath());
+		}
 		logger.info("Concept files : ");
 		for (String concept:concepts){
 			logger.info( concept);

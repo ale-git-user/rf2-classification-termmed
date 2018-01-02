@@ -464,5 +464,11 @@ public class I_Constants {
 	public static final String PREVIOUS_INFERRED_RELATIONSHIP_FILES = "previous_inferred_relationship_snapshot_files.file";
 
 	public static final String INFERRED_RELATIONSHIPS_OUTPUT_FILE = "inferred_relationships_output_file";
+
+	public static final String CLASSIFIERFOLDER = "classifier_folder";
+
+	public static final String REMOVED_INFERRED_FILE = "RemovedPreviousInferred.txt";
+	
+	
 	
 }
