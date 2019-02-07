@@ -432,7 +432,7 @@ public class ClassificationRunner {
 		AddDefaultTerms(tmpConcepts);
 	}
 
-	private void AddDefaultTerms(HashSet<String> tmpConcepts) throws IOException {
+	private void AddDefaultTerms(HashSet<String> tmpConcept) throws IOException {
 		if (defaultTerms==null){
 			defaultTerms=new HashMap<String,String>();
 		}
@@ -1097,10 +1097,7 @@ public class ClassificationRunner {
 				// COMPLETELY PROCESS ALL C1 FOR BOTH IN & OUT
 				// PROCESS C1 WITH GROUP == 0
 				int thisC1 = rel_A.sourceId;
-				
-				if (thisC1==intValue){
-					boolean bstop =true;
-				}
+
 				// PROCESS WHILE BOTH HAVE GROUP 0
 				while (rel_A.sourceId == thisC1 && rel_B.sourceId == thisC1 && rel_A.group == 0
 						&& rel_B.group == 0 && !done_A && !done_B) {

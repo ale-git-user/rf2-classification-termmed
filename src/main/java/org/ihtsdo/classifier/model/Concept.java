@@ -29,12 +29,23 @@ public class Concept implements Comparable<Object> {
     /** The is defined. */
     public boolean isDefined;
 
+    public String getModule() {
+        return module;
+    }
+
+    public void setModule(String module) {
+        this.module = module;
+    }
+
+    private String module;
+
     /**
      * Instantiates a new concept.
      */
     public Concept() {
         id = Integer.MIN_VALUE;
         isDefined = false;
+        module="";
     }
 
     /**
@@ -46,8 +57,14 @@ public class Concept implements Comparable<Object> {
     public Concept(int id, boolean isDefined) {
         this.id = id;
         this.isDefined = isDefined;
+        this.module=null;
     }
 
+    public Concept(int id, boolean isDefined, String module) {
+        this.id = id;
+        this.isDefined = isDefined;
+        this.module=module;
+    }
     /**
      * Sets the id.
      *

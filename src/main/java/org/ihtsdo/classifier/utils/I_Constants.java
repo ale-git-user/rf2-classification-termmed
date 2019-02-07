@@ -178,6 +178,22 @@ public class I_Constants {
 	// set out mode: true = yes; false = all data; comment out inappropriate one
 	/** The Constant rf2Format. */
 	public final static boolean rf2Format = true; // true
+    public static final String DELTA_EXPORT_FOLDER = "exported-delta";
+    public static final String DELTA_EXPORT_ZIP_FILE = "exported-delta.zip";
+	public static final String SNAPSHOT_EXPORT_FOLDER = "exported-snapshot";
+	public static final String CLASSIFIER_PREVIOUS_SNAPSHOT_FOLDER = "prevSnapFolder";
+	public static final String CLASSIFIER_EXPORT_TMP_FOLDER = "temp" ;
+	public static final String CLASSIFIER_PREVIOUS_CLASSIFICATION_FILES_FOLDER = "previousFiles";
+	public static final String CLASSIFIER_PREVIOUS_SNAP_ZIP_FILE = "prevSnapshotFolder.zip";
+	public static final String CLASSIFIER_TEMP_SORTING_FOLDER = "temp_sort";
+	public static final String CLASSIFIER_POST_PROCESS_OUTPUT_FOLDER = "output";
+	public static final String CLASSIFIER_REPORT_FILENAME = "classificationReport.txt";
+	public static final String CLASSIFIER_EXPORTED_DELTA_ZIP_FILE ="exportedDelta.zip" ;
+	public static final String CLASSIFIER_CONCEPT_FILENAME = "sct2_Concept";
+	public static final String CLASSIFIER_STATED_RELATIONSHIPS_FILENAME = "sct2_StatedRelationship";
+	public static final String CLASSIFIER_INFERRED_RELATIONSHIPS_FILENAME = "sct2_Relationship";
+	public static final String CLASSIFIER_TEXTDEFINITION_FILENAME = "sct2_TextDefinition";
+	public static final String CLASSIFIER_DESCRIPTION_FILENAME = "sct2_Description";
 
 	/** The read only. */
 	public static boolean readOnly = false;

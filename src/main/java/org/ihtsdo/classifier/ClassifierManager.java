@@ -17,9 +17,15 @@
 package org.ihtsdo.classifier;
 
 import java.io.File;
+import java.util.HashSet;
+import java.util.Set;
 
+import org.apache.commons.configuration.ConfigurationException;
+import org.apache.commons.configuration.XMLConfiguration;
 import org.apache.log4j.Logger;
-import org.ihtsdo.rf2.snapshot.SnapshotManager;
+import org.ihtsdo.classifier.utils.I_Constants;
+import org.ihtsdo.rf2.snapshot.SnapshotZipRunner;
+import org.snomed.otf.owltoolkit.service.SnomedReasonerService;
 
 
 /**
@@ -56,36 +62,66 @@ public class ClassifierManager {
 			String defaultLangCode=args[6];
 			String moduleId=args[7];
 			String namespace=args[8];
-			
-//			String date="20180131";
-//			String pathId="214";
+
+//			String date="20180720";
+//			String pathId="112";
 //			String executionId="1";
 //			String db="en-edition";
-//			String defaultSnapshotFolder="/Users/ar/classifier/en-edition/214/exported-snapshot";
+//			String defaultSnapshotFolder="/Users/ar/Downloads/snows/fdb2e55f-7aa5-595f-a28c-5f3f0db1a824";
 //			String defaultLangCode="en";
-//			String moduleId="900000000000207008";
-//			String namespace="0";
-			
-			SnapshotManager sm=new SnapshotManager(file, db,pathId, date, defaultSnapshotFolder, moduleId, namespace);
-			sm.execute();		
-			sm=null;
-			
-			boolean classified=true;
-			CycleCheck cc=new CycleCheck(file,db,pathId,executionId, defaultSnapshotFolder,defaultLangCode);
-			if (cc.cycleDetected()){
-				classified=false;
-			}
-			cc=null;
-					
-			if (classified){
-				ClassificationRunner cr=new ClassificationRunner(file,date,db,pathId,executionId,defaultSnapshotFolder,defaultLangCode);
-				cr.execute();
-				cr=null;
-			}
+//			String moduleId="11234000105";
+//			String namespace="1234000";
+
+
+			String classifierFolder=getClassifierFolder(file);
+			File baseFolder=new File( classifierFolder + "/" + db + "/" + pathId.toString());
+			SnapshotZipRunner zm=new SnapshotZipRunner(baseFolder, date, defaultSnapshotFolder, moduleId, namespace);
+			zm.execute();
+			zm=null;
+
+			File zipPrevSnapshot=new File(baseFolder,I_Constants.CLASSIFIER_PREVIOUS_SNAP_ZIP_FILE);
+			Set<File> snapshotFiles = new HashSet<File>();
+			snapshotFiles.add(zipPrevSnapshot);
+
+			File zipExportedDelta=new File(baseFolder,I_Constants.CLASSIFIER_EXPORTED_DELTA_ZIP_FILE);
+
+			String fileName="classification-results_" + date ;
+			File resultsFile = new File(baseFolder,fileName + ".zip");
+            if (resultsFile.exists()){
+                resultsFile.delete();
+            }
+			new SnomedReasonerService().classify(
+					"command-line",
+					snapshotFiles,
+					zipExportedDelta,
+					resultsFile,
+					SnomedReasonerService.ELK_REASONER_FACTORY,
+					false // outputOntologyFileForDebug
+			);
+
+			System.out.println("Classification results written to " + resultsFile.getAbsolutePath());
+
+			PostClassificationRunner pcr=new PostClassificationRunner(baseFolder, resultsFile, moduleId, date, executionId, defaultSnapshotFolder, defaultLangCode);
+			pcr.execute();
+			pcr=null;
 
 		} catch (Exception e) {
 			e.printStackTrace();
 		} 
 		System.exit(0);
+	}
+
+	public static String getClassifierFolder(File config) throws ConfigurationException {
+		XMLConfiguration xmlConfig;
+		try {
+			xmlConfig=new XMLConfiguration(config);
+		} catch (ConfigurationException e) {
+			logger.info("ClassificationRunner - Error happened getting params file." + e.getMessage());
+			throw e;
+		}
+
+		String classifierFolder=xmlConfig.getString(I_Constants.CLASSIFIERFOLDER);
+		xmlConfig=null;
+		return classifierFolder;
 	}
 }
