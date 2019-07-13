@@ -217,6 +217,8 @@ public class SnapshotZipRunner {
 //			getSnapshot(ontoModule, prevSnapFolder, previousOwlOntology);
 //		}
 
+
+		renameFilesForClassifier(prevSnapFolder,"Snapshot");
 		FileHelper.pack(prevSnapFolder.getAbsolutePath(), zipPrevSnapshot.getAbsolutePath());
 
 		//
@@ -299,16 +301,22 @@ public class SnapshotZipRunner {
                 String filePattern=FileHelper.getFileTypeByHeader(file);
 
                 if (filePattern.equals("rf2-concepts")){
-                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_CONCEPT_FILENAME + "_" + fileType + ".txt"));
+                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_CONCEPT_FILENAME + "_" + fileType + "_.txt"));
                 }else if (filePattern.equals("rf2-descriptions")){
-                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_DESCRIPTION_FILENAME + "_" + fileType + ".txt"));
+                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_DESCRIPTION_FILENAME + "_" + fileType + "_.txt"));
                 }else if (filePattern.equals("rf2-relationships") && file.getName().toLowerCase().contains("_stated")){
-                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_STATED_RELATIONSHIPS_FILENAME + "_" + fileType + ".txt"));
+                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_STATED_RELATIONSHIPS_FILENAME + "_" + fileType + "_.txt"));
                 }else if (filePattern.equals("rf2-relationships") && !file.getName().toLowerCase().contains("_stated")){
-                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_INFERRED_RELATIONSHIPS_FILENAME + "_" + fileType + ".txt"));
+                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_INFERRED_RELATIONSHIPS_FILENAME + "_" + fileType + "_.txt"));
                 }else if (filePattern.equals("rf2-textDefinition")){
-                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_TEXTDEFINITION_FILENAME + "_" + fileType + ".txt"));
-                }
+                    file.renameTo(new File(file.getParent(),I_Constants.CLASSIFIER_TEXTDEFINITION_FILENAME + "_" + fileType + "_.txt"));
+                }else if (!file.getName().contains(fileType + "_")){
+                	if (file.getName().contains(fileType)) {
+						file.renameTo(new File(file.getParent(), file.getName().replace(fileType, fileType + "_")));
+					}else{
+						file.renameTo(new File(file.getParent(), file.getName().replace(".txt", fileType + "_.txt")));
+					}
+				}
             }
         }
     }

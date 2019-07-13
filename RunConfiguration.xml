@@ -3,7 +3,7 @@
 	<!-- default module id for relationships of metadata root concept -->
 	<moduleId>900000000000207008</moduleId>
 	<!-- effective time for inferred relationships -->
-	<classifier_folder>/Users/ar/classifier</classifier_folder>
+	<classifier_folder>/Users/ar/dev/classifier</classifier_folder>
 	<!-- concept files -->
 	<concept_snapshot_files>
 		<!-- <file>/Users/ar/Downloads/Archive-1/sct2_Concept_Snapshot_GB1000000_20140401.txt</file> -->
