@@ -90,20 +90,27 @@ public class ClassifierManager {
             if (resultsFile.exists()){
                 resultsFile.delete();
             }
-			new SnomedReasonerService().classify(
-					"command-line",
-					snapshotFiles,
-					zipExportedDelta,
-					resultsFile,
-					SnomedReasonerService.ELK_REASONER_FACTORY,
-					false // outputOntologyFileForDebug
-			);
+			CycleCheck cc=new CycleCheck(file, db,pathId,executionId,
+					defaultSnapshotFolder,defaultLangCode);
+			if (!cc.cycleDetected()) {
+				cc = null;
+				new SnomedReasonerService().classify(
+						"command-line",
+						snapshotFiles,
+						zipExportedDelta,
+						resultsFile,
+						SnomedReasonerService.ELK_REASONER_FACTORY,
+						false // outputOntologyFileForDebug
+				);
 
-			System.out.println("Classification results written to " + resultsFile.getAbsolutePath());
+				System.out.println("Classification results written to " + resultsFile.getAbsolutePath());
 
-			PostClassificationRunner pcr=new PostClassificationRunner(baseFolder, resultsFile, moduleId, date, executionId, defaultSnapshotFolder, defaultLangCode);
-			pcr.execute();
-			pcr=null;
+				PostClassificationRunner pcr = new PostClassificationRunner(baseFolder, resultsFile, moduleId, date, executionId, defaultSnapshotFolder, defaultLangCode);
+				pcr.execute();
+				pcr = null;
+			}else{
+				cc=null;
+			}
 
 		} catch (Exception e) {
 			e.printStackTrace();

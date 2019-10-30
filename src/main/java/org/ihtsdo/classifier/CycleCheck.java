@@ -25,11 +25,10 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
+import java.util.*;
 
+import au.csiro.snorocket.core.GCI;
+import com.google.common.collect.Sets;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.XMLConfiguration;
 import org.apache.log4j.Logger;
@@ -41,6 +40,12 @@ import org.ihtsdo.json.model.ConceptDescriptor;
 import org.ihtsdo.json.model.RelationshipVersion;
 
 import com.google.gson.Gson;
+import org.semanticweb.owlapi.model.OWLAxiom;
+import org.snomed.otf.owltoolkit.constants.Concepts;
+import org.snomed.otf.owltoolkit.conversion.AxiomRelationshipConversionService;
+import org.snomed.otf.owltoolkit.conversion.ConversionException;
+import org.snomed.otf.owltoolkit.domain.AxiomRepresentation;
+import org.snomed.otf.owltoolkit.domain.Relationship;
 
 /**
  * The Class CycleCheck.
@@ -67,7 +72,7 @@ public class CycleCheck {
 	private String ISARELATIONSHIPTYPEID="116680003";
 
 	/** The concept file. */
-	private String[] conceptFile;
+	private String conceptFile;
 
 	/** The relationship file. */
 	private String[] relationshipFile;
@@ -100,7 +105,20 @@ public class CycleCheck {
 	private HashMap<String, String[]> defaultTerms;
 
 	private String defaultLangCode;
+	private File prevSnapFolder;
+	private File deltaExportFolder;
+	private String baseFolder;
 
+	public static void main(String[] args){
+		try {
+			CycleCheck cc=new CycleCheck(new File("RunConfiguration.xml"), "nl-edition","448","118",
+					"/Users/ar/dev/classifier/nulo","nl");
+			cc.cycleDetected();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+	}
 	public CycleCheck(File config, String dbName, String pathId, String executionId, String defaultSnapshotFolder, String defaultLangCode) throws IOException, Exception {
 		this.config=config;
 		this.pathId=pathId;
@@ -108,6 +126,7 @@ public class CycleCheck {
 		this.dbName=dbName;
 		this.defaultSnapshotFolder=defaultSnapshotFolder;
 		this.defaultLangCode=defaultLangCode;
+
 		logger = Logger.getLogger("org.ihtsdo.classifier.CycleCheck");
 		getParams();
 	}
@@ -121,7 +140,8 @@ public class CycleCheck {
 			throw e;
 		}
 		this.classifierFolder=xmlConfig.getString(I_Constants.CLASSIFIERFOLDER);
-		File detectFolder=new File(classifierFolder + "/" + dbName + "/" + pathId.toString() + "/detectedCycles");
+		this.baseFolder=classifierFolder + "/" + dbName + "/" + pathId.toString();
+		File detectFolder=new File(baseFolder + "/detectedCycles");
 		if (!detectFolder.exists()){
 			detectFolder.mkdirs();
 		}
@@ -131,31 +151,102 @@ public class CycleCheck {
 		if (tmpFile.exists()){
 			tmpFile.delete();
 		}
-		File pathFolder=new File( classifierFolder + "/" + dbName + "/" + pathId.toString() + "/exported-snapshot");
+		File pathFolder=new File( baseFolder , I_Constants.SNAPSHOT_EXPORT_FOLDER);
 		if (!pathFolder.exists()){
 			pathFolder.mkdirs();
 		}
-		String conceptF=FileHelper.getFile( pathFolder, "rf2-concepts", classifierFolder + "/releasedFiles/" + dbName ,null,null);
-		conceptFile=new String[]{conceptF};
+		conceptFile=FileHelper.getFile( pathFolder, "rf2-concepts", defaultSnapshotFolder  ,null,null);
 
 		String descriptionFile=FileHelper.getFile( pathFolder, "rf2-descriptions", defaultSnapshotFolder,null,null);
 		descriptions=descriptionFile;
-		
-		String staRelFile=FileHelper.getFile( pathFolder, "rf2-relationships", classifierFolder + "/releasedFiles/" + dbName ,"stated",null);
-		relationshipFile=new String[]{staRelFile};
+
+		deltaExportFolder=new File( baseFolder , I_Constants.DELTA_EXPORT_FOLDER);
+		prevSnapFolder =new File( baseFolder , I_Constants.CLASSIFIER_PREVIOUS_SNAPSHOT_FOLDER);
+
+//		String staRelFile=FileHelper.getFile( pathFolder, "rf2-relationships", classifierFolder + "/releasedFiles/" + dbName ,null,"stated");
+		String owlAxioms=FileHelper.getFile( pathFolder, "rf2-owl-expression",null, "expression", "ontology");
+
+		getOwl2RF2(owlAxioms);
 
 
 		logger.info("CheckCycle - Parameters:");
-		logger.info("Concept files : ");
-		for (String concept:conceptFile){
-			logger.info( concept);
-		}
-		logger.info("Relationship files : " );
-		for (String relFile:relationshipFile){
-			logger.info(relFile);
-		}
+		logger.info("Concept file : ");
+			logger.info( conceptFile);
+		logger.info("Owl Axiom file : " );
+			logger.info(owlAxioms);
 		logger.info("Detected cycle output file = " + outputFile);
 
+
+	}
+
+	private void getOwl2RF2(String owlAxioms) throws IOException, ConversionException {
+		isarelationships=new HashMap<String,List<String>>();
+		final AxiomRelationshipConversionService axiomRelationshipConversionService;
+		axiomRelationshipConversionService = new AxiomRelationshipConversionService(Sets.newHashSet(Concepts.LATERALITY_LONG));
+		BufferedReader br = FileHelper.getReader(conceptFile);
+		br.readLine();
+		String[] spl;
+		String line;
+		HashSet<String> inacCpts=new HashSet<String>();
+		while((line=br.readLine())!=null){
+			spl=line.split("\t",-1);
+			if (spl[2].equals("0")){
+				inacCpts.add(spl[0]);
+			}
+		}
+		br.close();
+		br = FileHelper.getReader(owlAxioms);
+		br.readLine();
+		long isaId=Long.parseLong(ISARELATIONSHIPTYPEID);
+		int count=0;
+		while((line=br.readLine())!=null){
+			spl=line.split("\t",-1);
+			if (!(spl[2].equals("0") || !spl[4].equals(I_Constants.AXIOM_REFSET) || inacCpts.contains(spl[5]))){
+				OWLAxiom owlAxiom = axiomRelationshipConversionService.convertOwlExpressionToOWLAxiom(spl[6]);
+				AxiomRepresentation axiomRepresentation = axiomRelationshipConversionService.convertAxiomToRelationships( owlAxiom);
+				if (axiomRepresentation==null) {
+					continue;
+				}
+				Map<Integer, List<Relationship>> axiomRelationshipGroups=null;
+
+				if (axiomRepresentation.getRightHandSideRelationships()!=null &&
+						axiomRepresentation.getRightHandSideRelationships().size()>0) {
+					axiomRelationshipGroups = axiomRepresentation.getRightHandSideRelationships();
+
+					for (Integer group : axiomRelationshipGroups.keySet()) {
+						List<Relationship> axiomRelationships = axiomRelationshipGroups.get(group);
+						for (Relationship axiomRelationship : axiomRelationships) {
+							long type = axiomRelationship.getTypeId();
+
+							if (type==isaId){
+								String target=String.valueOf(axiomRelationship.getDestinationId());
+								if (inacCpts.contains(target)){
+									continue;
+								}
+								String sourceId = String.valueOf(axiomRepresentation.getLeftHandSideNamedConcept());
+
+								List<String> relList = isarelationships.get(sourceId);
+								if (relList == null) {
+									relList = new ArrayList<String>();
+								}
+								if (!relList.contains(target)) {
+									relList.add(target);
+									isarelationships.put(sourceId, relList);
+								}
+								count++;
+								if (count % 100000 == 0) {
+									System.out.print(".");
+								}
+							}
+
+						}
+					}
+				}
+			}
+		}
+		br.close();
+		logger.info(".");
+		logger.info("Active isas Relationships loaded:" +  isarelationships.size());
 	}
 
 	/**
@@ -168,7 +259,7 @@ public class CycleCheck {
 	public boolean cycleDetected() throws FileNotFoundException, IOException{
 		conceptInLoop=new HashSet<String>();
 		loadConceptsFile();
-		loadIsaRelationshipsFile();
+//		loadIsaRelationshipsFile();
 		for(String con:concepts.keySet()){
 			if (!concepts.get(con)){
 				List<String> desc=new ArrayList<String>();
@@ -323,41 +414,38 @@ public class CycleCheck {
 	/**
 	 * Load concepts file.
 	 *
-	 * @param conceptFile2 the concepts file
 	 * @throws java.io.FileNotFoundException the file not found exception
 	 * @throws java.io.IOException Signals that an I/O exception has occurred.
 	 */
 	public void loadConceptsFile() throws FileNotFoundException, IOException {
 
-		concepts=new HashMap<String, Boolean>();
+		concepts = new HashMap<String, Boolean>();
 		int count = 0;
-		for (String concept:conceptFile){
-			logger.info("Starting Concepts: " + concept);
-			BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(concept), "UTF8"));
-			try {
-				String line = br.readLine();
-				line=br.readLine();
-				while (line != null) {
-					if (line.isEmpty()) {
-						continue;
-					}
-					String[] columns = line.split("\t",-1);
-					if ( columns[2].equals("1") ){
-
-						concepts.put(columns[0], false);
-						count++;
-						if (count % 100000 == 0) {
-							System.out.print(".");
-						}
-					}
-					line = br.readLine();
+		logger.info("Starting Concepts: " + conceptFile);
+		BufferedReader br = new BufferedReader(new InputStreamReader(new FileInputStream(conceptFile), "UTF8"));
+		try {
+			String line = br.readLine();
+			line = br.readLine();
+			while (line != null) {
+				if (line.isEmpty()) {
+					continue;
 				}
+				String[] columns = line.split("\t", -1);
+				if (columns[2].equals("1")) {
 
-				logger.info(".");
-				logger.info("Active concepts loaded = " + concepts.size());
-			} finally {
-				br.close();
+					concepts.put(columns[0], false);
+					count++;
+					if (count % 100000 == 0) {
+						System.out.print(".");
+					}
+				}
+				line = br.readLine();
 			}
+
+			logger.info(".");
+			logger.info("Active concepts loaded = " + concepts.size());
+		} finally {
+			br.close();
 		}
 
 	}

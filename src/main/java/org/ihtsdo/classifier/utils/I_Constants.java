@@ -194,6 +194,7 @@ public class I_Constants {
 	public static final String CLASSIFIER_INFERRED_RELATIONSHIPS_FILENAME = "sct2_Relationship";
 	public static final String CLASSIFIER_TEXTDEFINITION_FILENAME = "sct2_TextDefinition";
 	public static final String CLASSIFIER_DESCRIPTION_FILENAME = "sct2_Description";
+	public static final String AXIOM_REFSET = "733073007";
 
 	/** The read only. */
 	public static boolean readOnly = false;

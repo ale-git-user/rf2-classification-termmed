@@ -163,7 +163,15 @@ public class SnapshotZipRunner {
 		String previousOwlAxiom=FileHelper.getFile( defaultSnapshotFolderFile, "rf2-owl-expression",pathFolder.getAbsolutePath(), "expression", "ontology");
 //		String previousOwlOntology=FileHelper.getFile( defaultSnapshotFolderFile, "rf2-owl-ontology",pathFolder.getAbsolutePath(), "ontology", "axiom");
 
-        // fix name for owl-classifier -it doesn't find if owl files start with sct2
+		//create snapshot for axioms in order to cycle checking in the next process
+		File outAxioms=getOutputFileFromMerge(exportedOwlAxiom,previousOwlAxiom);
+
+		// snapshot of delta + previous descriptions
+		File sortedAxioms=sortFile(outAxioms);
+		createSnapshot(new File(exportSnapFolder,sortedAxioms.getName()), sortedAxioms);
+
+
+		// fix name for owl-classifier -it doesn't find if owl files start with sct2
         previousOwlAxiom=renameToDer2(previousOwlAxiom);
 //        previousOwlOntology=renameToDer2(previousOwlOntology);
 
