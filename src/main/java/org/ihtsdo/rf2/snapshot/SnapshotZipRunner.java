@@ -1,6 +1,7 @@
 package org.ihtsdo.rf2.snapshot;
 
 import org.apache.commons.configuration.ConfigurationException;
+import org.apache.commons.io.FileUtils;
 import org.apache.log4j.Logger;
 import org.ihtsdo.classifier.utils.*;
 
@@ -198,7 +199,21 @@ public class SnapshotZipRunner {
 
 
 		if (previousOwlAxiom!=null){
-			FileHelper.copyTo(new File(previousOwlAxiom),new File(prevSnapFolder,new File(previousOwlAxiom).getName()));
+			// Replace mode previousOwl + deltaOWl by snapshot as previous and empty delta file, because of
+//			concept moved to core 141000221101
+//			exported-delta:
+//			module:20621000087109 status:inactive concept:141000221101	SubClassOf(:141000221101 :713618003)
+//			previous:
+//			module:20621000087109 status active concept:141000221101	SubClassOf(:141000221101 :713618003)
+//			module:900000000000207008 status active concept:141000221101	SubClassOf(:141000221101 :713618003)
+//
+//			result in 141000221101 without parent in inferred view because of the exported record inactive both core and extension owlexpression
+
+
+//			FileHelper.copyTo(new File(previousOwlAxiom),new File(prevSnapFolder,new File(previousOwlAxiom).getName()));
+			FileHelper.copyTo(new File(exportSnapFolder,sortedAxioms.getName()),new File(prevSnapFolder,new File(previousOwlAxiom).getName()));
+
+			backupExportedOwlAndCreateEmpty(exportedOwlAxiom);
 		}
 //		if (previousOwlOntology!=null){
 //			FileHelper.copyTo(new File(previousOwlOntology),new File(prevSnapFolder,new File(previousOwlOntology).getName()));
@@ -230,6 +245,19 @@ public class SnapshotZipRunner {
 		FileHelper.pack(prevSnapFolder.getAbsolutePath(), zipPrevSnapshot.getAbsolutePath());
 
 		//
+	}
+
+	private void backupExportedOwlAndCreateEmpty(String exportedOwlAxiom) {
+		File of=new File(exportedOwlAxiom);
+		File df=new File(tmpFolder,"exportedbkp_" + of.getName() );
+		try {
+			FileUtils.copyFile(of,df);
+			BufferedWriter bw = FileHelper.getWriter(of);
+			bw.append("id\teffectiveTime\tactive\tmoduleId\trefsetId\treferencedComponentId\towlExpression\r\n");
+			bw.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
 	}
 
 	private void RetireInferrdPreviousOfRetiredConcept(File prevConceptsFile, File sortedInfRels, File tmpFolder) throws IOException {
