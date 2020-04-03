@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.HashMap;
+import java.util.HashSet;
 
 public class MovedComponents {
 
@@ -50,6 +51,8 @@ public class MovedComponents {
 		bwt.append("\r\n");
 		
 		String mod;
+		String relKey;
+		HashMap<String,LineStatus> hashRelsCptMoved=new HashMap<String, LineStatus>();
 		while ((line= br.readLine()) != null) {		
 			spl=line.split("\t",-1);
 			mod=hashcpt.get(spl[4]);
@@ -60,27 +63,12 @@ public class MovedComponents {
 				}
 				else{
 					lines++;
-					for (int i=0;i<spl.length;i++){
-						if (i==2){
-							bw.append("0");
-							bwt.append("0");
-						}else{
-							bw.append(spl[i]);
-							if (i==1){
-								bwt.append(releaseDate);
-							}else{
-								bwt.append(spl[i]);
-							}
-						}
-						if (i==spl.length-1){
-							bw.append("\r\n");
-							bwt.append("\r\n");
-						}else{
-							bw.append("\t");
-							bwt.append("\t");
-						}
+                    relKey=spl[4] + "-" + spl[5] + "-" + spl[6] + "-" + spl[7];
+                    if (!hashRelsCptMoved.containsKey(relKey)){
 
-					}
+                        LineStatus lineStatus=new LineStatus(true,line);
+                        hashRelsCptMoved.put(relKey,lineStatus);
+                    }
 				}
 			}else{
 
@@ -88,8 +76,69 @@ public class MovedComponents {
 				bw.append("\r\n");
 			}
 		}
+        br.close();
+
+		// reprocess to avoid inactivate rels from extension to core concept where it's fine that exists
+		if (hashRelsCptMoved.size()>0) {
+            fis = new FileInputStream(infPrev);
+            isr = new InputStreamReader(fis,"UTF-8");
+            br = new BufferedReader(isr);
+
+            header = br.readLine();
+            while ((line= br.readLine()) != null) {
+                spl = line.split("\t", -1);
+                mod = hashcpt.get(spl[4]);
+                if (mod != null) {
+                    if (mod.equals(spl[3]) && spl[2].equals("1")) {
+                        relKey = spl[4] + "-" + spl[5] + "-" + spl[6] + "-" + spl[7];
+
+                        if (hashRelsCptMoved.containsKey(relKey)) {
+                            LineStatus lineStatus = hashRelsCptMoved.get(relKey);
+                            if (lineStatus.isStatus()) {
+
+                                spl = lineStatus.getLine().split("\t", -1);
+
+                                for (int i = 0; i < spl.length; i++) {
+                                    if (i == 2) {
+                                        bw.append("0");
+                                        bwt.append("0");
+                                    } else {
+                                        bw.append(spl[i]);
+                                        if (i == 1) {
+                                            bwt.append(releaseDate);
+                                        } else {
+                                            bwt.append(spl[i]);
+                                        }
+                                    }
+                                    if (i == spl.length - 1) {
+                                        bw.append("\r\n");
+                                        bwt.append("\r\n");
+                                    } else {
+                                        bw.append("\t");
+                                        bwt.append("\t");
+                                    }
+
+                                }
+                                lineStatus.setStatus(false);
+                                hashRelsCptMoved.put(relKey, lineStatus);
+                            }
+                        }
+                    }
+                }
+            }
+            br.close();
+
+            LineStatus lineStatus;
+            for(String key:hashRelsCptMoved.keySet()){
+                lineStatus=hashRelsCptMoved.get(key);
+                if (lineStatus.isStatus()){
+                    bw.append(lineStatus.getLine());
+                    bw.append("\r\n");
+
+                }
+            }
+        }
 		bw.close();
-		br.close();
 		
 		fis = new FileInputStream(infPrev);
 		isr = new InputStreamReader(fis,"UTF-8");
@@ -142,4 +191,28 @@ public class MovedComponents {
 		
 	}
 
+    private static class LineStatus {
+	    boolean status;
+	    String line;
+        public LineStatus(boolean status, String line) {
+            this.status=status;
+            this.line=line;
+        }
+
+        public boolean isStatus() {
+            return status;
+        }
+
+        public void setStatus(boolean status) {
+            this.status = status;
+        }
+
+        public String getLine() {
+            return line;
+        }
+
+        public void setLine(String line) {
+            this.line = line;
+        }
+    }
 }
