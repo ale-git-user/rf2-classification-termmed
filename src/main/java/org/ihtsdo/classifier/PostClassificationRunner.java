@@ -50,6 +50,7 @@ public class PostClassificationRunner {
 
     private final File baseFolder;
     private final File resultFile;
+	private final File reportfolder;
 
 	/** The output tmp. */
 	private File tempRelationshipDeltaStore;
@@ -61,9 +62,9 @@ public class PostClassificationRunner {
     private String previousInfRels;
 
     public PostClassificationRunner(File baseFolder, File resultFile,
-                                    String moduleId, String date,
-                                    String executionId,
-                                    String defaultSnapshotFolder, String defaultLangCode) throws IOException, Exception {
+									String moduleId, String date,
+									String executionId,
+									String defaultSnapshotFolder, String defaultLangCode, File reportFolder) throws IOException, Exception {
         this.baseFolder=baseFolder;
         this.resultFile=resultFile;
         this.module = moduleId;
@@ -71,6 +72,7 @@ public class PostClassificationRunner {
 		this.executionId=executionId;
 		this.defaultSnapshotFolder=defaultSnapshotFolder;
 		this.defaultLangCode=defaultLangCode;
+		this.reportfolder=reportFolder;
 		logger = Logger.getLogger("org.ihtsdo.classifier.PostClassificationRunner");
 
 
@@ -140,8 +142,7 @@ public class PostClassificationRunner {
             if (!outFolder.exists()){
                 outFolder.mkdirs();
             }
-
-            this.reportFile=new File(outFolder ,I_Constants.CLASSIFIER_REPORT_FILENAME);
+            this.reportFile=new File(reportfolder ,I_Constants.CLASSIFIER_REPORT_FILENAME);
 
             if (reportFile.exists()){
                 reportFile.delete();

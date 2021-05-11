@@ -59,7 +59,9 @@ import org.snomed.otf.owltoolkit.domain.Relationship;
  */
 public class CycleCheck {
 
-	/** The concepts. */
+    /** The report folder. */
+    private final File reportFolder;
+    /** The concepts. */
 	private HashMap<String, Boolean> concepts;
 
 	/** The isa relationships map. */
@@ -111,7 +113,7 @@ public class CycleCheck {
 
 	public static void main(String[] args){
 		try {
-			CycleCheck cc=new CycleCheck(new File("RunConfiguration.xml"), "nl-edition","448","118",
+			CycleCheck cc=new CycleCheck(new File("RunConfiguration.xml"),new File("reportFolder") ,"nl-edition","448","118",
 					"/Users/ar/dev/classifier/nulo","nl");
 			cc.cycleDetected();
 		} catch (Exception e) {
@@ -119,13 +121,15 @@ public class CycleCheck {
 		}
 
 	}
-	public CycleCheck(File config, String dbName, String pathId, String executionId, String defaultSnapshotFolder, String defaultLangCode) throws IOException, Exception {
+	public CycleCheck(File config, File reportFolder,String dbName,String pathId, String executionId, String defaultSnapshotFolder, String defaultLangCode) throws IOException, Exception {
 		this.config=config;
 		this.pathId=pathId;
 		this.executionId=executionId;
 		this.dbName=dbName;
+		this.reportFolder=reportFolder;
 		this.defaultSnapshotFolder=defaultSnapshotFolder;
 		this.defaultLangCode=defaultLangCode;
+
 
 		logger = Logger.getLogger("org.ihtsdo.classifier.CycleCheck");
 		getParams();
@@ -141,11 +145,7 @@ public class CycleCheck {
 		}
 		this.classifierFolder=xmlConfig.getString(I_Constants.CLASSIFIERFOLDER);
 		this.baseFolder=classifierFolder + "/" + dbName + "/" + pathId.toString();
-		File detectFolder=new File(baseFolder + "/detectedCycles");
-		if (!detectFolder.exists()){
-			detectFolder.mkdirs();
-		}
-		outputFile=detectFolder.getAbsolutePath() + "/detectedCycles.txt";
+		outputFile=reportFolder.getAbsolutePath() + "/detectedCycles.txt";
 		
 		File tmpFile=new File(outputFile);
 		if (tmpFile.exists()){
@@ -202,7 +202,7 @@ public class CycleCheck {
 		while((line=br.readLine())!=null){
 			spl=line.split("\t",-1);
 			if (!(spl[2].equals("0") || !spl[4].equals(I_Constants.AXIOM_REFSET) || inacCpts.contains(spl[5]))){
-				OWLAxiom owlAxiom = axiomRelationshipConversionService.convertOwlExpressionToOWLAxiom(spl[6]);
+				OWLAxiom owlAxiom=axiomRelationshipConversionService.convertOwlExpressionToOWLAxiom(spl[6]);
 				AxiomRepresentation axiomRepresentation = axiomRelationshipConversionService.convertAxiomToRelationships( owlAxiom);
 				if (axiomRepresentation==null) {
 					continue;

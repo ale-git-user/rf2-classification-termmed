@@ -104,16 +104,19 @@ public class SnapshotZipRunner {
 		// snapshot of previous concepts to zip previous
 		File prevConceptsFile=new File(previousConcepts);
 		File sortedConcepts=sortFile(prevConceptsFile);
-		File concPrev=createSnapshot(new File(prevSnapFolder,I_Constants.CLASSIFIER_CONCEPT_FILENAME + "_Snapshot.txt"),sortedConcepts);
-		if (prevConceptsFile.exists()){
-			prevConceptsFile.delete();
-		}
-		FileHelper.copyTo(concPrev,prevConceptsFile);
+		File concPrev=new File(prevSnapFolder,I_Constants.CLASSIFIER_CONCEPT_FILENAME + "_Snapshot.txt");
+		createSnapshot(concPrev,sortedConcepts);
+
+//		if (prevConceptsFile.exists()){
+//			prevConceptsFile.delete();
+//		}
+//		FileHelper.copyTo(concPrev,prevConceptsFile);
 
 		// snapshot of delta + previous concepts to clean inferred rels
-		File outConcepts=getOutputFileFromMerge(exportedConcepts,prevConceptsFile.getAbsolutePath());
+		File outConcepts=getOutputFileFromMerge(exportedConcepts,concPrev.getAbsolutePath());
 		sortedConcepts=sortFile(outConcepts);
-		concPrev=createSnapshot(new File(exportSnapFolder,sortedConcepts.getName().substring(7)), sortedConcepts);
+		File conceptLastVersion=new File(exportSnapFolder,sortedConcepts.getName().substring(7));
+		createSnapshot(conceptLastVersion, sortedConcepts);
 //
 //		descriptions
 		String exportedDescriptions=FileHelper.getFile( deltaExportFolder, "rf2-descriptions", defaultSnapshotFolder ,null,null);
@@ -131,7 +134,7 @@ public class SnapshotZipRunner {
 		// snapshot of previous stated to zip previous
 		File previousStatedRelsSnp=new File(previousStatedRels);
 		File sortedStatedRels=sortFile(previousStatedRelsSnp);
-		File statedRelPrevSnapshot=createSnapshot(new File(prevSnapFolder,I_Constants.CLASSIFIER_STATED_RELATIONSHIPS_FILENAME + "_Snapshot.txt"),sortedStatedRels);
+		createSnapshot(new File(prevSnapFolder,I_Constants.CLASSIFIER_STATED_RELATIONSHIPS_FILENAME + "_Snapshot.txt"),sortedStatedRels);
 //		if (previousStatedRelsSnp.exists()){
 //			previousStatedRelsSnp.delete();
 //		}
@@ -145,10 +148,13 @@ public class SnapshotZipRunner {
 
 		File sortedInfRels=sortFile(outInfRels);
 		if (namespace!=null && !namespace.equals("0")){
-			MovedComponents.retiredPreviousInferred(concPrev,sortedInfRels, tmpFolder, releaseDate,moduleId, namespace);
+			MovedComponents.retiredPreviousInferred(conceptLastVersion,sortedInfRels, tmpFolder, releaseDate,moduleId, namespace);
 		}
-		RetireInferrdPreviousOfRetiredConcept(prevConceptsFile,sortedInfRels, tmpFolder);
-		File infPrev=createSnapshot(new File(prevSnapFolder,I_Constants.CLASSIFIER_INFERRED_RELATIONSHIPS_FILENAME + "_Snapshot.txt"),sortedInfRels);
+		// commented because of reactivated core concepts in extension module
+//		RetireInferrdPreviousOfRetiredConcept(prevConceptsFile,sortedInfRels, tmpFolder);
+		// and replaced by concept snapshot
+		RetireInferrdPreviousOfRetiredConcept(outConcepts,sortedInfRels, tmpFolder);
+		createSnapshot(new File(prevSnapFolder,I_Constants.CLASSIFIER_INFERRED_RELATIONSHIPS_FILENAME + "_Snapshot.txt"),sortedInfRels);
 
 		// mrcm files
 
@@ -170,7 +176,6 @@ public class SnapshotZipRunner {
 		// snapshot of delta + previous descriptions
 		File sortedAxioms=sortFile(outAxioms);
 		createSnapshot(new File(exportSnapFolder,sortedAxioms.getName()), sortedAxioms);
-
 
 		// fix name for owl-classifier -it doesn't find if owl files start with sct2
         previousOwlAxiom=renameToDer2(previousOwlAxiom);
@@ -468,7 +473,7 @@ public class SnapshotZipRunner {
 		br.close();
 		return module;
 	}
-	private File createSnapshot(File outputFile,File sortedFile) {
+	private void createSnapshot(File outputFile,File sortedFile) {
 
 		logger.info("createSnapshot method input file:" + sortedFile.getAbsolutePath());
 		logger.info("createSnapshot method output file:" + outputFile.getAbsolutePath());
@@ -476,7 +481,7 @@ public class SnapshotZipRunner {
 		sng.execute();
 		sng=null;
 		System.gc();
-		return outputFile;
+		return ;
 
 	}
 	private File sortFile(File file) {

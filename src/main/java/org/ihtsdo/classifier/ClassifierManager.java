@@ -23,6 +23,7 @@ import java.util.Set;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.configuration.XMLConfiguration;
 import org.apache.log4j.Logger;
+import org.ihtsdo.classifier.utils.FileHelper;
 import org.ihtsdo.classifier.utils.I_Constants;
 import org.ihtsdo.rf2.snapshot.SnapshotZipRunner;
 import org.snomed.otf.owltoolkit.service.SnomedReasonerService;
@@ -62,19 +63,25 @@ public class ClassifierManager {
 			String defaultLangCode=args[6];
 			String moduleId=args[7];
 			String namespace=args[8];
+			String server=args[9];
 
-//			String date="20180720";
+//			String date="20210331";
 //			String pathId="112";
 //			String executionId="1";
-//			String db="en-edition";
-//			String defaultSnapshotFolder="/Users/ar/Downloads/snows/fdb2e55f-7aa5-595f-a28c-5f3f0db1a824";
+//			String db="nl-edition";
+//			String defaultSnapshotFolder="/Users/ar/Downloads/7c6b8292-c901-54c1-bf12-60ce0ab56923";
 //			String defaultLangCode="en";
-//			String moduleId="11234000105";
-//			String namespace="1234000";
-
+//			String moduleId="11000146104";
+//			String namespace="1000146";
+//			String server="localhost";
 
 			String classifierFolder=getClassifierFolder(file);
 			File baseFolder=new File( classifierFolder + "/" + db + "/" + pathId.toString());
+			File reportFolder=new File( classifierFolder + "/" + server + "/" + db + "/" + moduleId + "/" + pathId.toString());
+			if (!reportFolder.exists()){
+			    reportFolder.mkdirs();
+            }
+            FileHelper.emptyFolder(reportFolder);
 			SnapshotZipRunner zm=new SnapshotZipRunner(baseFolder, date, defaultSnapshotFolder, moduleId, namespace);
 			zm.execute();
 			zm=null;
@@ -90,7 +97,7 @@ public class ClassifierManager {
             if (resultsFile.exists()){
                 resultsFile.delete();
             }
-			CycleCheck cc=new CycleCheck(file, db,pathId,executionId,
+			CycleCheck cc=new CycleCheck(file,reportFolder, db, pathId,executionId,
 					defaultSnapshotFolder,defaultLangCode);
 			if (!cc.cycleDetected()) {
 				cc = null;
@@ -105,7 +112,7 @@ public class ClassifierManager {
 
 				System.out.println("Classification results written to " + resultsFile.getAbsolutePath());
 
-				PostClassificationRunner pcr = new PostClassificationRunner(baseFolder, resultsFile, moduleId, date, executionId, defaultSnapshotFolder, defaultLangCode);
+				PostClassificationRunner pcr = new PostClassificationRunner(baseFolder, resultsFile, moduleId, date, executionId, defaultSnapshotFolder, defaultLangCode,reportFolder);
 				pcr.execute();
 				pcr = null;
 			}else{

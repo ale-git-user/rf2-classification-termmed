@@ -1199,9 +1199,6 @@ public class ClassificationRunner {
 				RelationshipGroup groupA = null;
 				RelationshipGroup groupB = null;
 
-//				if (thisC1==stopValue){
-//					boolean bstop=true;
-//				}
 				// SEGMENT GROUPS IN LIST_A
 				int prevGroup = Integer.MIN_VALUE;
 				while (rel_A.sourceId == thisC1 && !done_A) {

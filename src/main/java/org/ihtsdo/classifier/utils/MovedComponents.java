@@ -52,6 +52,7 @@ public class MovedComponents {
 		
 		String mod;
 		String relKey;
+		HashMap<String,String> inactivatedIds=new HashMap<String,String>();
 		HashMap<String,LineStatus> hashRelsCptMoved=new HashMap<String, LineStatus>();
 		while ((line= br.readLine()) != null) {		
 			spl=line.split("\t",-1);
@@ -60,6 +61,9 @@ public class MovedComponents {
 				if (mod.equals(spl[3]) || spl[2].equals("0") ){
 					bw.append(line);
 					bw.append("\r\n");
+					if(spl[2].equals("0")){
+						inactivatedIds.put(spl[0],spl[1]);
+					}
 				}
 				else{
 					lines++;
@@ -85,11 +89,16 @@ public class MovedComponents {
             br = new BufferedReader(isr);
 
             header = br.readLine();
+			String inactiveIdDate=null;
             while ((line= br.readLine()) != null) {
                 spl = line.split("\t", -1);
                 mod = hashcpt.get(spl[4]);
                 if (mod != null) {
                     if (mod.equals(spl[3]) && spl[2].equals("1")) {
+						inactiveIdDate=inactivatedIds.get(spl[0]);
+						if (inactiveIdDate!=null && inactiveIdDate.compareTo(spl[1])>0){
+							continue;
+						}
                         relKey = spl[4] + "-" + spl[5] + "-" + spl[6] + "-" + spl[7];
 
                         if (hashRelsCptMoved.containsKey(relKey)) {
